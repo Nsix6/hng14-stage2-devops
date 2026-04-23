@@ -37,11 +37,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ✅ FIX: install full API dependencies
       - name: Install deps
         run: |
           pip install -r api/requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov httpx
 
       - name: Run tests
         run: |
