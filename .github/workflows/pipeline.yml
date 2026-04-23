@@ -18,19 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Python lint
-        run: |
-          pip install flake8
-          flake8 . || true
+      - run: pip install flake8 && flake8 . || true
 
-      - name: JS lint
-        run: |
+      - run: |
           cd frontend
           npm install --legacy-peer-deps
           npx eslint . || true
 
-      - name: Docker lint
-        run: |
+      - run: |
           docker run --rm -i hadolint/hadolint < api/Dockerfile || true
           docker run --rm -i hadolint/hadolint < worker/Dockerfile || true
           docker run --rm -i hadolint/hadolint < frontend/Dockerfile || true
@@ -40,19 +35,13 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install deps
-        run: |
+      - run: |
           pip install -r api/requirements.txt
           pip install pytest pytest-cov httpx
-
-      - name: Run tests
-        run: |
           export PYTHONPATH=$(pwd)
           pytest --cov=api --cov-report=xml
 
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: coverage
           path: coverage.xml
@@ -62,9 +51,7 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build images
-        run: |
+      - run: |
           docker build -t api:latest -f api/Dockerfile .
           docker build -t worker:latest -f worker/Dockerfile .
           docker build -t frontend:latest -f frontend/Dockerfile .
@@ -74,19 +61,14 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build image for scanning
-        run: docker build -t api:latest -f api/Dockerfile .
-
-      - name: Run Trivy scan (non-blocking)
-        uses: aquasecurity/trivy-action@master
+      - run: docker build -t api:latest -f api/Dockerfile .
+      - uses: aquasecurity/trivy-action@master
         with:
           image-ref: api:latest
           format: sarif
           output: trivy.sarif
           severity: CRITICAL
           exit-code: 0
-
       - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy.sarif
@@ -97,33 +79,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ ENV FIX INCLUDED HERE
       - name: Start stack
         run: |
+          export REDIS_HOST=redis
+          export REDIS_PORT=6379
+          export QUEUE_NAME=job
+          export API_PORT=8000
+          export FRONTEND_PORT=3000
+          export API_URL=http://api:8000
+          export REDIS_CPU_LIMIT=0.25
+          export REDIS_MEMORY_LIMIT=256m
+          export API_CPU_LIMIT=0.5
+          export API_MEMORY_LIMIT=512m
+          export WORKER_CPU_LIMIT=0.5
+          export WORKER_MEMORY_LIMIT=512m
+          export FRONTEND_CPU_LIMIT=0.5
+          export FRONTEND_MEMORY_LIMIT=512m
+
           docker compose up -d
           sleep 25
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Submit job
         run: |
           JOB=$(curl -s -X POST http://localhost:3000/submit | jq -r .job_id)
           echo "JOB_ID=$JOB" >> $GITHUB_ENV
 
-      - name: Poll status
+      - name: Poll
         run: |
           for i in {1..15}; do
             STATUS=$(curl -s http://localhost:3000/status/$JOB_ID | jq -r .status)
-            echo "Status: $STATUS"
-            if [ "$STATUS" = "completed" ]; then
-              exit 0
-            fi
+            if [ "$STATUS" = "completed" ]; then exit 0; fi
             sleep 3
           done
           exit 1
 
-      - name: Cleanup
-        if: always()
+      - if: always()
         run: docker compose down
 
   deploy:
@@ -132,18 +125,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-
-      - name: Rolling update
-        run: |
+      - run: |
           docker compose up -d --no-deps --build api
-
           for i in {1..12}; do
-            if curl -s http://localhost:8000/health | grep ok; then
-              echo "New container healthy"
-              exit 0
-            fi
+            if curl -s http://localhost:8000/health | grep ok; then exit 0; fi
             sleep 5
           done
-
-          echo "Health check failed — aborting"
           exit 1
