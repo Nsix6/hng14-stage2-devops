@@ -26,7 +26,9 @@ def health():
 def create_job():
     job_id = str(uuid.uuid4())
     r.lpush(QUEUE_NAME, job_id)
-    r.hset(f"job:{job_id}", "status", "queued")
+
+    r.hset(f"job:{job_id}", mapping={"status": "queued"})
+
     return {"job_id": job_id}
 
 
