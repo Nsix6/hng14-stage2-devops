@@ -41,8 +41,10 @@ jobs:
         run: |
           pip install pytest pytest-cov fastapi
 
+      # ✅ FIX: add PYTHONPATH
       - name: Run tests
         run: |
+          export PYTHONPATH=.
           pytest --cov=api --cov-report=xml
 
       - name: Upload coverage
@@ -129,14 +131,12 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y jq
           JOB=$(curl -s -X POST http://localhost:3000/submit | jq -r .job_id)
-          echo "Job: $JOB"
           echo "JOB_ID=$JOB" >> $GITHUB_ENV
 
       - name: Poll status
         run: |
           for i in {1..15}; do
             STATUS=$(curl -s http://localhost:3000/status/$JOB_ID | jq -r .status)
-            echo "Status: $STATUS"
             if [ "$STATUS" = "completed" ]; then
               exit 0
             fi
@@ -162,11 +162,9 @@ jobs:
 
           for i in {1..12}; do
             if curl -s http://localhost:8000/health | grep ok; then
-              echo "New container healthy"
               exit 0
             fi
             sleep 5
           done
 
-          echo "Health check failed — aborting"
           exit 1
