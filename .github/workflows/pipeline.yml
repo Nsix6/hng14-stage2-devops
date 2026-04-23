@@ -22,7 +22,7 @@ jobs:
       - name: JS lint
         run: |
           cd frontend
-          npm install
+          npm install --legacy-peer-deps
           npx eslint .
 
       - name: Docker lint
