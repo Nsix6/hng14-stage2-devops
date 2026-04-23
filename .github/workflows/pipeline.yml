@@ -57,36 +57,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
 
-    services:
-      registry:
-        image: registry:2
-        ports:
-          - 5000:5000
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Build images
         run: |
-          cd $GITHUB_WORKSPACE
-          docker build -t localhost:5000/api:${{ github.sha }} -f api/Dockerfile .
-          docker build -t localhost:5000/worker:${{ github.sha }} -f worker/Dockerfile .
-          docker build -t localhost:5000/frontend:${{ github.sha }} -f frontend/Dockerfile .
-
-      - name: Tag latest
-        run: |
-          docker tag localhost:5000/api:${{ github.sha }} localhost:5000/api:latest
-          docker tag localhost:5000/worker:${{ github.sha }} localhost:5000/worker:latest
-          docker tag localhost:5000/frontend:${{ github.sha }} localhost:5000/frontend:latest
-
-      - name: Push images
-        run: |
-          docker push localhost:5000/api:${{ github.sha }}
-          docker push localhost:5000/api:latest
-          docker push localhost:5000/worker:${{ github.sha }}
-          docker push localhost:5000/worker:latest
-          docker push localhost:5000/frontend:${{ github.sha }}
-          docker push localhost:5000/frontend:latest
+          docker build -t api:latest -f api/Dockerfile .
+          docker build -t worker:latest -f worker/Dockerfile .
+          docker build -t frontend:latest -f frontend/Dockerfile .
 
   security:
     runs-on: ubuntu-latest
@@ -95,10 +73,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ FIX: rebuild image inside this job
+      - name: Build image for scanning
+        run: |
+          docker build -t api:latest -f api/Dockerfile .
+
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: localhost:5000/api:latest
+          image-ref: api:latest
           format: sarif
           output: trivy.sarif
           severity: CRITICAL
@@ -164,5 +147,4 @@ jobs:
             sleep 5
           done
 
-          echo "Health check failed — aborting"
           exit 1
