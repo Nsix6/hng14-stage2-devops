@@ -66,14 +66,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ✅ FIX: explicitly ensure working dir + correct context
       - name: Build images
         run: |
-          pwd
-          ls -R
-
           cd $GITHUB_WORKSPACE
-
           docker build -t localhost:5000/api:${{ github.sha }} -f api/Dockerfile .
           docker build -t localhost:5000/worker:${{ github.sha }} -f worker/Dockerfile .
           docker build -t localhost:5000/frontend:${{ github.sha }} -f frontend/Dockerfile .
@@ -100,22 +95,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Trivy
-        run: |
-          sudo apt-get update
-          sudo apt-get install wget -y
-          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.1_Linux-64bit.deb
-          sudo dpkg -i trivy_0.50.1_Linux-64bit.deb
-
-      - name: Scan images
-        run: |
-          trivy image --severity CRITICAL --exit-code 1 localhost:5000/api:latest
-          trivy image --severity CRITICAL --exit-code 1 localhost:5000/worker:latest
-          trivy image --severity CRITICAL --exit-code 1 localhost:5000/frontend:latest
-
-      - name: SARIF output
-        run: |
-          trivy image --format sarif -o trivy.sarif localhost:5000/api:latest
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: localhost:5000/api:latest
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL
+          exit-code: 1
 
       - uses: github/codeql-action/upload-sarif@v3
         with:
@@ -133,9 +120,11 @@ jobs:
           docker compose up -d
           sleep 25
 
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
       - name: Submit job
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
           JOB=$(curl -s -X POST http://localhost:3000/submit | jq -r .job_id)
           echo "JOB_ID=$JOB" >> $GITHUB_ENV
 
@@ -143,6 +132,7 @@ jobs:
         run: |
           for i in {1..15}; do
             STATUS=$(curl -s http://localhost:3000/status/$JOB_ID | jq -r .status)
+            echo "Status: $STATUS"
             if [ "$STATUS" = "completed" ]; then
               exit 0
             fi
@@ -168,9 +158,11 @@ jobs:
 
           for i in {1..12}; do
             if curl -s http://localhost:8000/health | grep ok; then
+              echo "New container healthy"
               exit 0
             fi
             sleep 5
           done
 
+          echo "Health check failed — aborting"
           exit 1
