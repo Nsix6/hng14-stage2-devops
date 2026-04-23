@@ -68,9 +68,9 @@ jobs:
 
       - name: Build images
         run: |
-          docker build -t localhost:5000/api:${{ github.sha }} ./api
-          docker build -t localhost:5000/worker:${{ github.sha }} ./worker
-          docker build -t localhost:5000/frontend:${{ github.sha }} ./frontend
+          docker build -f api/Dockerfile -t localhost:5000/api:${{ github.sha }} ./api
+          docker build -f worker/Dockerfile -t localhost:5000/worker:${{ github.sha }} ./worker
+          docker build -f frontend/Dockerfile -t localhost:5000/frontend:${{ github.sha }} ./frontend
 
       - name: Tag latest
         run: |
