@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   redis:
     image: redis:7-alpine
@@ -18,8 +20,10 @@ services:
     networks:
       - internal
 
-    env_file:
-      - ./api/.env
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      QUEUE_NAME: ${QUEUE_NAME}
 
     depends_on:
       redis:
@@ -48,8 +52,10 @@ services:
     networks:
       - internal
 
-    env_file:
-      - ./worker/.env
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      QUEUE_NAME: ${QUEUE_NAME}
 
     depends_on:
       redis:
@@ -63,8 +69,8 @@ services:
     networks:
       - internal
 
-    env_file:
-      - ./frontend/.env
+    environment:
+      API_URL: ${API_URL}
 
     depends_on:
       api:
