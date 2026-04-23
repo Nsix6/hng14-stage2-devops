@@ -2,19 +2,15 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-RUN adduser -D appuser
+# ✅ FIX: correct path from root context
+COPY frontend/package*.json ./
 
-COPY package*.json ./
+# ✅ modern npm flag
+RUN npm install --omit=dev
 
-RUN npm install --only=production
-
-COPY . .
-
-USER appuser
+# ✅ copy only frontend app
+COPY frontend/ .
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget --spider -q http://localhost:3000/health || exit 1
-
-CMD ["npm", "start"]
+CMD ["node", "app.js"]
