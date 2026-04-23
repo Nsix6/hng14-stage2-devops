@@ -23,7 +23,7 @@ jobs:
           npx eslint .
 
       - name: Docker lint
-        uses: hadolint/hadolint-action@v2
+        uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: "**/Dockerfile"
 
