@@ -44,7 +44,7 @@ jobs:
 
       - name: Run tests
         run: |
-          export PYTHONPATH=.
+          export PYTHONPATH=$(pwd)
           pytest --cov=api --cov-report=xml
 
       - name: Upload coverage
@@ -66,11 +66,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ FIX: explicitly ensure working dir + correct context
       - name: Build images
         run: |
-          docker build -f api/Dockerfile -t localhost:5000/api:${{ github.sha }} ./api
-          docker build -f worker/Dockerfile -t localhost:5000/worker:${{ github.sha }} ./worker
-          docker build -f frontend/Dockerfile -t localhost:5000/frontend:${{ github.sha }} ./frontend
+          pwd
+          ls -R
+
+          cd $GITHUB_WORKSPACE
+
+          docker build -t localhost:5000/api:${{ github.sha }} -f api/Dockerfile .
+          docker build -t localhost:5000/worker:${{ github.sha }} -f worker/Dockerfile .
+          docker build -t localhost:5000/frontend:${{ github.sha }} -f frontend/Dockerfile .
 
       - name: Tag latest
         run: |
@@ -125,7 +131,7 @@ jobs:
       - name: Start stack
         run: |
           docker compose up -d
-          sleep 20
+          sleep 25
 
       - name: Submit job
         run: |
