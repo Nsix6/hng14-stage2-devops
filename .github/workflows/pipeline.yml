@@ -1,134 +1,74 @@
-name: CI/CD Pipeline
+version: "3.9"
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+services:
+  redis:
+    image: redis:7-alpine
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    mem_limit: ${REDIS_MEMORY_LIMIT}
+    cpus: ${REDIS_CPU_LIMIT}
 
-on:
-  push:
-    branches: [main]
-  pull_request:
+  api:
+    build: ./api
+    networks: [internal]
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      QUEUE_NAME: ${QUEUE_NAME}
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${API_PORT}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    mem_limit: ${API_MEMORY_LIMIT}
+    cpus: ${API_CPU_LIMIT}
 
-permissions:
-  contents: read
-  security-events: write
+  worker:
+    build: ./worker
+    networks: [internal]
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      QUEUE_NAME: ${QUEUE_NAME}
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: ${WORKER_MEMORY_LIMIT}
+    cpus: ${WORKER_CPU_LIMIT}
 
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  frontend:
+    build: ./frontend
+    networks: [internal]
+    environment:
+      API_URL: ${API_URL}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    mem_limit: ${FRONTEND_MEMORY_LIMIT}
+    cpus: ${FRONTEND_CPU_LIMIT}
 
-      - run: pip install flake8 && flake8 . || true
-
-      - run: |
-          cd frontend
-          npm install --legacy-peer-deps
-          npx eslint . || true
-
-      - run: |
-          docker run --rm -i hadolint/hadolint < api/Dockerfile || true
-          docker run --rm -i hadolint/hadolint < worker/Dockerfile || true
-          docker run --rm -i hadolint/hadolint < frontend/Dockerfile || true
-
-  test:
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          pip install -r api/requirements.txt
-          pip install pytest pytest-cov httpx
-          export PYTHONPATH=$(pwd)
-          pytest --cov=api --cov-report=xml
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage.xml
-
-  build:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          docker build -t api:latest -f api/Dockerfile .
-          docker build -t worker:latest -f worker/Dockerfile .
-          docker build -t frontend:latest -f frontend/Dockerfile .
-
-  security:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t api:latest -f api/Dockerfile .
-      - uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: api:latest
-          format: sarif
-          output: trivy.sarif
-          severity: CRITICAL
-          exit-code: 0
-      - uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: trivy.sarif
-
-  integration:
-    runs-on: ubuntu-latest
-    needs: security
-    steps:
-      - uses: actions/checkout@v4
-
-      # ✅ ENV FIX INCLUDED HERE
-      - name: Start stack
-        run: |
-          export REDIS_HOST=redis
-          export REDIS_PORT=6379
-          export QUEUE_NAME=job
-          export API_PORT=8000
-          export FRONTEND_PORT=3000
-          export API_URL=http://api:8000
-          export REDIS_CPU_LIMIT=0.25
-          export REDIS_MEMORY_LIMIT=256m
-          export API_CPU_LIMIT=0.5
-          export API_MEMORY_LIMIT=512m
-          export WORKER_CPU_LIMIT=0.5
-          export WORKER_MEMORY_LIMIT=512m
-          export FRONTEND_CPU_LIMIT=0.5
-          export FRONTEND_MEMORY_LIMIT=512m
-
-          docker compose up -d
-          sleep 25
-
-      - run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Submit job
-        run: |
-          JOB=$(curl -s -X POST http://localhost:3000/submit | jq -r .job_id)
-          echo "JOB_ID=$JOB" >> $GITHUB_ENV
-
-      - name: Poll
-        run: |
-          for i in {1..15}; do
-            STATUS=$(curl -s http://localhost:3000/status/$JOB_ID | jq -r .status)
-            if [ "$STATUS" = "completed" ]; then exit 0; fi
-            sleep 3
-          done
-          exit 1
-
-      - if: always()
-        run: docker compose down
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: integration
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          docker compose up -d --no-deps --build api
-          for i in {1..12}; do
-            if curl -s http://localhost:8000/health | grep ok; then exit 0; fi
-            sleep 5
-          done
-          exit 1
+networks:
+  internal:
+    driver: bridge
