@@ -37,11 +37,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ FIX: install full API dependencies
       - name: Install deps
         run: |
-          pip install pytest pytest-cov fastapi
+          pip install -r api/requirements.txt
+          pip install pytest pytest-cov
 
-      # ✅ FIX: add PYTHONPATH
       - name: Run tests
         run: |
           export PYTHONPATH=.
