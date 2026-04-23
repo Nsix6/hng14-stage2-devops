@@ -1,0 +1,87 @@
+services:
+  redis:
+    image: redis:7-alpine
+    networks:
+      - internal
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    mem_limit: ${REDIS_MEMORY_LIMIT}
+    cpus: ${REDIS_CPU_LIMIT}
+
+  api:
+    build: ./api
+    networks:
+      - internal
+
+    env_file:
+      - ./api/.env
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    ports:
+      - "${API_PORT}:8000"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+    mem_limit: ${API_MEMORY_LIMIT}
+    cpus: ${API_CPU_LIMIT}
+
+  worker:
+    build: ./worker
+    networks:
+      - internal
+
+    env_file:
+      - ./worker/.env
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    mem_limit: ${WORKER_MEMORY_LIMIT}
+    cpus: ${WORKER_CPU_LIMIT}
+
+  frontend:
+    build: ./frontend
+    networks:
+      - internal
+
+    env_file:
+      - ./frontend/.env
+
+    depends_on:
+      api:
+        condition: service_healthy
+
+    ports:
+      - "${FRONTEND_PORT}:3000"
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+    mem_limit: ${FRONTEND_MEMORY_LIMIT}
+    cpus: ${FRONTEND_CPU_LIMIT}
+
+networks:
+  internal:
+    driver: bridge
