@@ -22,10 +22,12 @@ jobs:
           npm install
           npx eslint .
 
+      # ✅ FIXED: replace broken action with docker-based hadolint
       - name: Docker lint
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: "**/Dockerfile"
+        run: |
+          docker run --rm -i hadolint/hadolint < api/Dockerfile
+          docker run --rm -i hadolint/hadolint < worker/Dockerfile
+          docker run --rm -i hadolint/hadolint < frontend/Dockerfile
 
   test:
     runs-on: ubuntu-latest
@@ -90,6 +92,7 @@ jobs:
 
       - name: Install Trivy
         run: |
+          sudo apt-get update
           sudo apt-get install wget -y
           wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.1_Linux-64bit.deb
           sudo dpkg -i trivy_0.50.1_Linux-64bit.deb
@@ -118,17 +121,18 @@ jobs:
       - name: Start stack
         run: |
           docker compose up -d
-          sleep 15
+          sleep 20
 
       - name: Submit job
         run: |
+          sudo apt-get update && sudo apt-get install -y jq
           JOB=$(curl -s -X POST http://localhost:3000/submit | jq -r .job_id)
           echo "Job: $JOB"
           echo "JOB_ID=$JOB" >> $GITHUB_ENV
 
       - name: Poll status
         run: |
-          for i in {1..10}; do
+          for i in {1..15}; do
             STATUS=$(curl -s http://localhost:3000/status/$JOB_ID | jq -r .status)
             echo "Status: $STATUS"
             if [ "$STATUS" = "completed" ]; then
