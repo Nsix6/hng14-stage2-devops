@@ -1,10 +1,25 @@
+# Stage 1: build
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+# Stage 2: runtime
 FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install --omit=dev --legacy-peer-deps
+RUN adduser -D appuser
 
-COPY . .
+COPY --from=builder /app /app
+
+USER appuser
+
+EXPOSE 3000
+
+HEALTHCHECK CMD wget -qO- http://localhost:3000/health || exit 1
 
 CMD ["node", "app.js"]
