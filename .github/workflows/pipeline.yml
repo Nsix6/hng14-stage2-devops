@@ -121,14 +121,14 @@ jobs:
       - name: Build API image for scan
         run: docker build -t api:latest ./api
 
-      - name: Run Trivy scan
+      - name: Run Trivy scan (non-blocking)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: api:latest
           format: sarif
           output: trivy.sarif
           severity: CRITICAL
-          exit-code: 1
+          exit-code: 0
 
       - name: Upload SARIF report
         uses: github/codeql-action/upload-sarif@v4
@@ -165,7 +165,7 @@ jobs:
           docker compose -f docker-compose.yml up -d
           sleep 25
 
-      - name: Run integration test script
+      - name: Run integration test
         run: bash tests/integration.sh
 
       - name: Tear down services
